@@ -54,7 +54,7 @@
         .PARAMETERS { background-color: #2ecc71; }
         .CONTEXT { background-color: #e74c3c; }
         .TRANSFORMERS { background-color: #f39c12; }
-        .PROOFS { background-color: #9b59b6; }
+        .PROOFS { background-color: #9469a5; }
         .EXAMPLES { background-color: #1abc9c; }
         .TYPES, .STRUCTURES, .ASSERTIONS, .NOTATION {
             background-color: rgba(255,255,255,0.15);
@@ -99,6 +99,7 @@
             border: 1px solid #3d3531;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
             font-size: 0.9rem;
+            font-weight: 300;
             max-width: 25rem;
             width: 25rem;
             opacity: 0;
@@ -371,16 +372,16 @@ CONCEPT Metaphor {
     const M=['CONCEPT','PARAMETERS','CONTEXT','TRANSFORMERS','PROOFS','EXAMPLES'],
     C=['TYPES','STRUCTURES','ASSERTIONS','NOTATION'],
     EXPLANATIONS = {
-        CONCEPT: "Defines the main idea or structure being described.",
-        PARAMETERS: "Lists the variables or inputs that can be adjusted.",
-        CONTEXT: "Provides background information and definitions.",
-        TRANSFORMERS: "Describes operations or changes that can be applied.",
-        PROOFS: "Contains logical arguments or demonstrations.",
-        EXAMPLES: "Gives concrete instances or use cases.",
-        TYPES: "Defines data types or categories used in the concept.",
-        STRUCTURES: "Describes complex data arrangements or compositions.",
-        ASSERTIONS: "States claims or conditions that must be true.",
-        NOTATION: "Explains symbols or shorthand used in the concept."
+        CONCEPT: "The outermost structure used in ConceptScript: they are formal-ish models of concepts in general.",
+        PARAMETERS: "Top level parameters to the Concept.",
+        CONTEXT: "This is where the meat of the concept is expressed; it also establishes a linguistic context for use in the proofs and examples below.",
+        TRANSFORMERS: "These are basically just functions, though their original design was inspired by proof tactics and were previously only used in that context, simplifying and reusing proof steps. Now they may also be used in the examples.",
+        PROOFS: "When generating a Concept theorems may be selected and proven by the LLM, or a user may request that certain theorems be included (proofs will still be generated automatically) in order to attempt to impose requirements on the generated Concept. An example would be that if you're generating an algorithm concept and want it to have some specific complexity characteristics, you could request a theorem demonstrating this. The extent to which this actually works has not been fully verified.",
+        EXAMPLES: "Gives concrete instances of the concept being defined.",
+        TYPES: "This is a mechanism to allow the LLM to define the basic primitives of the 'language' it will speak of in the rest of the Concept. Past versions have experimented with varying degrees of specificity in defining allowed types, e.g. linear, dependendent, algebraic. The current version leaves this pretty open-ended; it's not clear at this point what the best approach is.",
+        STRUCTURES: "These are kind of a blend between objects and functions: they're basically just a way of grouping together related elements, but they can also take parameters and extend other structures.",
+        ASSERTIONS: "States claims or conditions that must be true in terms of the defined types and structures.",
+        NOTATION: "Allows the LLM to define custom notation as a way of allowing more economical expression throughout the Concept."
     },
     COLORS = [
         '#3498db', '#2ecc71', '#e74c3c', '#f39c12', '#9b59b6', '#1abc9c'
