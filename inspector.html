@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Concept Inspector</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1e2a3a;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+        }
+        #concept-render {
+            background-color: #2c3e50;
+            padding: 20px;
+            min-height: 200px;
+            margin-bottom: 20px;
+            overflow-x: auto;
+        }
+        #concept-input {
+            width: calc(100% - 20px);
+            height: 200px;
+            margin-bottom: 20px;
+            background-color: #2c3e50;
+            color: #ffffff;
+            border: 1px solid #34495e;
+            padding: 10px;
+            font-family: monospace;
+        }
+        .parse-block {
+            margin: 5px;
+            padding: 10px;
+            border-radius: 5px;
+            color: #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .parse-block-content {
+            margin-left: 20px;
+            padding-left: 10px;
+            border-left: 2px solid rgba(255,255,255,0.15);
+        }
+        .parse-block-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .parse-block strong {
+            opacity: 0.5;
+            margin-right: 0.5rem;
+        }
+        .CONCEPT { background-color: #3498db; }
+        .PARAMETERS { background-color: #2ecc71; }
+        .CONTEXT { background-color: #e74c3c; }
+        .TRANSFORMERS { background-color: #f39c12; }
+        .PROOFS { background-color: #9b59b6; }
+        .EXAMPLES { background-color: #1abc9c; }
+        .TYPES, .STRUCTURES, .ASSERTIONS, .NOTATION {
+            background-color: rgba(255,255,255,0.15);
+        }
+        .error { color: #e74c3c; }
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            margin: 0;
+            color: #111;
+            font-weight: bold;
+        }
+        .comment {
+            color: rgba(0, 0, 0, 0.45);
+            font-style: italic;
+        }
+        .question-mark-container {
+            position: relative;
+        }
+        .question-mark {
+            width: 20px;
+            height: 20px;
+            background-color: #ffffff;
+            color: #1e2a3a;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: help;
+            opacity: 0.3;
+        }
+        .hover-panel {
+            position: absolute;
+            top: calc(100% - 0.5rem);
+            left: calc(100% - 0.5rem);
+            background-color: rgba(44, 36, 32, 0.7);
+            color: #ffffff;
+            padding: 1rem;
+            border-radius: 5px;
+            border: 1px solid #3d3531;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            font-size: 0.9rem;
+            max-width: 25rem;
+            width: 25rem;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+            z-index: 10;
+            backdrop-filter: blur(2px);
+        }
+        .question-mark-container:hover .hover-panel {
+            opacity: 1;
+            visibility: visible;
+        }
+        #page-title {
+            display: flex;
+            align-items: baseline;
+            margin-bottom: 1rem;
+        }
+        #page-title h1 {
+            margin-right: 0.5rem;
+        }
+        #concept-name {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="page-title">
+        <h1>Concept Inspector</h1>
+        <div id="concept-name"></div>
+    </div>
+    <div id="concept-render"></div>
+    <textarea id="concept-input" placeholder="Paste your ConceptScript here..."></textarea>
+    <script>
+    (()=>{
+    const M=['CONCEPT','PARAMETERS','CONTEXT','TRANSFORMERS','PROOFS','EXAMPLES'],
+    C=['TYPES','STRUCTURES','ASSERTIONS','NOTATION'],
+    EXPLANATIONS = {
+        CONCEPT: "Defines the main idea or structure being described.",
+        PARAMETERS: "Lists the variables or inputs that can be adjusted.",
+        CONTEXT: "Provides background information and definitions.",
+        TRANSFORMERS: "Describes operations or changes that can be applied.",
+        PROOFS: "Contains logical arguments or demonstrations.",
+        EXAMPLES: "Gives concrete instances or use cases.",
+        TYPES: "Defines data types or categories used in the concept.",
+        STRUCTURES: "Describes complex data arrangements or compositions.",
+        ASSERTIONS: "States claims or conditions that must be true.",
+        NOTATION: "Explains symbols or shorthand used in the concept."
+    },
+    COLORS = [
+        '#3498db', '#2ecc71', '#e74c3c', '#f39c12', '#9b59b6', '#1abc9c'
+    ],
+    P=s=>{
+        let r={},l=s.split('\n'),i=0,
+        E=(s,k)=>{
+            let t=[],i=s,b=0,f=0;
+            while(i<l.length){
+                let n=l[i];
+                t.push(n);
+                if(n.includes('{')){b++;f=1}
+                if(n.includes('}'))b--;
+                if(f&&b===0)break;
+                if(k.some(w=>l[i+1]&&l[i+1].trim().startsWith(w)))break;
+                i++
+            }
+            return{content:t.join('\n'),endIndex:i}
+        },
+        X=(t,b)=>{
+            let s=t.indexOf(b);
+            if(s<0)return'';
+            let u=t.slice(s),a=0,
+            e=u.split('\n').findIndex((n,i)=>{
+                if(n.includes('{'))a++;
+                if(n.includes('}'))a--;
+                return(a===0&&i>0)||(i>0&&C.some(k=>n.trim().startsWith(k)))
+            });
+            return e<0?u:u.split('\n').slice(0,e+1).join('\n')
+        };
+        while(i<l.length){
+            let n=l[i].trim(),k=M.find(b=>n.startsWith(b));
+            if(k){
+                let{content:t,endIndex:j}=E(i,M);
+                if(k==='CONTEXT'){
+                    r[k]={_raw:n};
+                    C.forEach(b=>r[k][b]=X(t,b))
+                } else {
+                    r[k]=t;
+                }
+                i=j
+            }
+            i++
+        }
+        return r
+    },
+    V=t=>t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"),
+    H=t=>t.split('\n').map(l=>{
+        let[a,b]=l.split(/--(.+)/);
+        return b?a+`<span class="comment">--${b}</span>`:l.trim().startsWith('//')?`<span class="comment">${l}</span>`:l
+    }).join('\n'),
+    Q=(k)=>`<div class="question-mark-container"><div class="question-mark">?</div><div class="hover-panel">${EXPLANATIONS[k]||''}</div></div>`,
+    G=r=>{
+        let h='';
+        for(let[k,v]of Object.entries(r))
+            h+=B(k,v);
+        return h
+    },
+    B=(k,v)=>{
+        let t='';
+        if(k==='CONTEXT'){
+            t+=`<pre>${H(V(v._raw))}</pre>`;
+            for(let[s,u]of Object.entries(v)){
+                if(s!=='_raw'){
+                    t+=B(s,u.replace(/^\s{2}/gm, ''));
+                }
+            }
+        } else if(typeof v==='string'){
+            t=`<pre>${H(V(v))}</pre>`;
+        } else if(typeof v==='object'&&v!==null){
+            for(let[s,u]of Object.entries(v)){
+                if(s!=='_raw'){
+                    t+=B(s,u);
+                }
+            }
+        } else {
+            t=`<pre>${H(V(String(v)))}</pre>`;
+        }
+        return`<div class="parse-block ${k}"><div class="parse-block-header"><strong>${V(k)}</strong>${Q(k)}</div><div class="parse-block-content">${t}</div></div>`
+    },
+    U=()=>{
+        const i=document.getElementById('concept-input'),
+              r=document.getElementById('concept-render');
+        if(!i||!r){console.error("Required DOM elements not found");return}
+        try{
+            const t=P(i.value);
+            r.innerHTML=G(t);
+            updateConceptName(t.CONCEPT);
+        }catch(e){
+            console.error("Parsing error:",e);
+            r.innerHTML=`<div class="error">Parsing Error: ${V(e.message)}</div>`;
+            updateConceptName();
+        }
+    },
+    D=(f,w)=>{
+        let t;
+        return function(...a){
+            clearTimeout(t);
+            t=setTimeout(()=>f.apply(this,a),w)
+        }
+    },
+    updateConceptName=(conceptText)=>{
+        const nameElement = document.getElementById('concept-name');
+        if (conceptText) {
+            const match = conceptText.match(/CONCEPT\s+(\w+)/);
+            if (match) {
+                const name = match[1];
+                nameElement.innerHTML = name.split('').map((char, index) => 
+                    `<span style="color:${COLORS[index % COLORS.length]}">${char}</span>`
+                ).join('');
+                nameElement.innerHTML = ": " + nameElement.innerHTML
+            } else {
+                nameElement.textContent = '';
+            }
+        } else {
+            nameElement.textContent = '';
+        }
+    };
+    const Y=D(U,300);
+    const I=document.getElementById('concept-input');
+    I?(I.addEventListener('input',Y),U()):console.error("Input element not found");
+    })();
+    </script>
+</body>
+</html>
