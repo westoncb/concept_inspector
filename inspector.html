@@ -90,8 +90,8 @@
         }
         .hover-panel {
             position: absolute;
-            top: calc(100% - 0.5rem);
-            left: calc(100% - 0.5rem);
+            top: 0;
+            left: 0;
             background-color: rgba(44, 36, 32, 0.7);
             color: #ffffff;
             padding: 1rem;
@@ -107,6 +107,7 @@
             transition: opacity 0.3s, visibility 0.3s;
             z-index: 10;
             backdrop-filter: blur(2px);
+            pointer-events: none;
         }
         .question-mark-container:hover .hover-panel {
             opacity: 1;
