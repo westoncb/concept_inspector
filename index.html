@@ -133,237 +133,220 @@
     </div>
     <div id="concept-render"></div>
     <textarea id="concept-input" placeholder="Paste your ConceptScript here...">
-CONCEPT Metaphor {
+CONCEPT MatMulFreeLM {
   PARAMETERS {
-    Language : TYPE
-    Concept : TYPE
-    Context : TYPE
+    d : ℤ  // Model dimension
+    L : ℤ  // Number of layers
+    N : ℤ  // Sequence length
   }
 
   CONTEXT {
     TYPES {
-      Domain := SET(Concept)
+      // TernaryWeight: Key to eliminating MatMul operations
+      𝕋 := {-1, 0, 1}
+
+      // Vector
+      𝕍 := FUNC(Fin(N), ℝ)
+
+      // Matrix
+      𝕄 := FUNC(Fin(N), Fin(d), ℝ)
+
+      // TernaryMatrix
+      𝕋𝕄 := FUNC(Fin(N), Fin(d), 𝕋)
       
-      ConceptualMapping := FUNC(Concept, Domain) -> Concept
-      
-      MetaphorStructure := STRUCTURE {
-        FIELD source : Domain
-        FIELD target : Domain
-        FIELD mapping : ConceptualMapping
+      // BitLinear: Replaces dense layers with ternary weights
+      𝔹𝕃 := (𝕋𝕄, 𝕍)
+
+      // MLGRU: MatMul-free token mixing
+      𝕄𝕃𝔾ℝ𝕌 := (𝔹𝕃, 𝔹𝕃, 𝔹𝕃, 𝔹𝕃)
+
+      // GLU: Efficient channel mixing without MatMul
+      𝔾𝕃𝕌 := (𝔹𝕃, 𝔹𝕃, 𝔹𝕃)
+
+      // Layer: Combines token and channel mixing
+      𝕃𝕒𝕪𝕖𝕣 := (𝕄𝕃𝔾ℝ𝕌, 𝔾𝕃𝕌)
+
+      // Full model structure
+      𝕄𝕠𝕕𝕖𝕝 := (List(𝕃𝕒𝕪𝕖𝕣), 𝔹𝕃, 𝔹𝕃)
+    }
+
+    NOTATION {
+      // Replaces MatMul with efficient accumulation
+      x ⊛ W := ternary_accumulation(x, W)
+      x ⊙ y := element_wise_multiply(x, y)
+      f ∘ g := compose(f, g)
+      σ := sigmoid
+      // Smooth approximation of ReLU, crucial for model expressivity
+      τ := silu
+      ℒ := loss_function
+      𝔼 := expectation
+      ∇ := gradient
+      || := MAGNITUDE
+      ℙ := PERFORMANCE
+      ℂ := COMPUTE_COMPLEXITY
+      𝔸 := MEMORY_ACCESS
+
+      // Custom notations for core model operations
+      x ⊠ (W, b) := x ⊛ W + b  // BitLinear: Ternary MatMul with bias
+      MLGRU(x, h, (Wf, Wc, Wg, Wo)) := {  // MLGRU: Efficient sequential processing
+        f = σ(x ⊠ Wf), c = τ(x ⊠ Wc), g = σ(x ⊠ Wg),
+        h' = g ⊙ (f ⊙ h + (1 - f) ⊙ c),
+        o = h' ⊠ Wo
       }
-      
-      LinguisticExpression := FUNC(Language, Context) -> String
-      
-      ConceptualMetaphor := STRUCTURE {
-        FIELD name : String
-        FIELD structure : MetaphorStructure
-        FIELD expressions : SET(LinguisticExpression)
-      }
-      
-      MetaphorComprehension := FUNC(LinguisticExpression, Context) -> ConceptualMetaphor
-      
-      MetaphorGeneration := FUNC(ConceptualMetaphor, Context) -> LinguisticExpression
-      
-      Entailment := FUNC(ConceptualMetaphor) -> SET(Concept)
-      
-      BlendedSpace := STRUCTURE {
-        FIELD input_spaces : SET(Domain)
-        FIELD generic_space : Domain
-        FIELD blended_space : Domain
-        FIELD composition : FUNC(SET(Domain)) -> Domain
-        FIELD completion : FUNC(Domain) -> Domain
-        FIELD elaboration : FUNC(Domain) -> Domain
-      }
+
+      // GLU: Gated mixing of channels
+      GLU(x, (Wg, Wu, Wd)) := (τ(x ⊠ Wg) ⊙ (x ⊠ Wu)) ⊠ Wd
     }
 
     STRUCTURES {
-      STRUCTURE ImageSchema {
-        FIELD name : String
-        FIELD structure : FUNC(Concept) -> Bool
-        
-        FUNC instantiate(c : Concept) -> Bool {
-          RETURN structure(c)
-        }
+      // Core operations and their efficiency properties
+      STRUCTURE TernaryOps {
+        AXIOM Efficiency { ∀ x:𝕍, W:𝕋𝕄 . ℂ(x ⊛ W) < ℂ(matmul(x, W)) }
+        // Ternary operations are more compute-efficient than full-precision MatMul
       }
-      
-      STRUCTURE ConceptualIntegrationNetwork {
-        FIELD input_spaces : SET(Domain)
-        FIELD generic_space : Domain
-        FIELD blended_space : BlendedSpace
-        FIELD cross_space_mappings : SET((Domain, Domain, ConceptualMapping))
-        
-        FUNC blend() -> Domain {
-          LET composed = blended_space.composition(input_spaces)
-          LET completed = blended_space.completion(composed)
-          RETURN blended_space.elaboration(completed)
+
+      STRUCTURE MLGRUImpl {
+        AXIOM Stability { ∀ x,h:𝕍, m:𝕄𝕃𝔾ℝ𝕌 . ||MLGRU(x, h, m)|| ≤ MAX(||x||, ||h||) }
+        // MLGRU maintains bounded state, crucial for stable long-range dependencies
+      }
+
+      STRUCTURE GLUImpl {
+        AXIOM DimPreserve { ∀ x:𝕍, g:𝔾𝕃𝕌 . LEN(GLU(x, g)) == LEN(x) }
+        // GLU preserves dimensionality, allowing consistent layer stacking
+      }
+
+      // Fused BitLinear with efficient memory access
+      STRUCTURE FusedBL {
+        FUNC forward(X:𝕄, (W,b):𝔹𝕃) -> 𝕄 {
+          Y = RMSNorm(X)  // Stabilizes ternary layer inputs
+
+          // 8-bit quantization of activations
+          Y_q = AbsMaxQuant(Y, 8)
+          
+          // Ternary quantization of weights
+          W_q = AbsMeanQuant(W)
+
+          RETURN Y_q ⊠ (W_q, b)
         }
+
+        AXIOM Efficiency { ∀ X:𝕄 . 𝔸(forward(X)) < 𝔸(vanilla_bitlinear(X)) }
+        // Fused operation reduces memory access, crucial for efficiency
       }
     }
 
     ASSERTIONS {
-      AXIOM InvariantStructure {
-        FORALL (m : ConceptualMetaphor) .
-          EXIST (schema : ImageSchema) .
-            schema.instantiate(m.structure.source) AND
-            schema.instantiate(m.structure.target)
+      // Key properties of the MatMulFreeLM
+      AXIOM MatMulFree {
+        ∀ l:𝕃𝕒𝕪𝕖𝕣, x:𝕍 . CONTAINS(MatMul, OPERATIONS(l.forward(x))) == FALSE
       }
-      
-      AXIOM PartialMapping {
-        FORALL (m : ConceptualMetaphor) .
-          |DOMAIN(m.structure.mapping)| < |m.structure.source|
-      }
-      
-      AXIOM UnidirectionalMapping {
-        FORALL (m : ConceptualMetaphor) .
-          NOT EXIST (inverse_m : ConceptualMetaphor) .
-            inverse_m.structure.source = m.structure.target AND
-            inverse_m.structure.target = m.structure.source
-      }
-    }
+      // Core innovation: Complete elimination of MatMul operations
 
-    NOTATION {
-      source IS target := ConceptualMetaphor with source and target domains
-      A -> B := ConceptualMapping from A to B
-      blend(X, Y) := Blended space of X and Y
+      AXIOM ScalingAdvantage {
+        ∀ d1,d2:ℤ . d2 > d1 ⇒ ℙ(ℳℱ(d2)) - ℙ(𝕋𝕣(d2)) > ℙ(ℳℱ(d1)) - ℙ(𝕋𝕣(d1))
+      }
+      // MatMulFreeLM's performance scales better than traditional Transformers
+
+      AXIOM EnergyEfficiency {
+        ∀ m:𝕄𝕠𝕕𝕖𝕝 . ENERGY(m) < ENERGY(EQUIVALENT_𝕋𝕣(m))
+      }
+      // MatMulFreeLM is more energy-efficient than equivalent Transformers
     }
   }
 
   TRANSFORMERS {
-    REWRITE ExtendMetaphor(m : ConceptualMetaphor, new_mapping : ConceptualMapping) -> ConceptualMetaphor {
-      LET extended_mapping = λ c, d . 
-        IF c IN DOMAIN(new_mapping) THEN new_mapping(c, d)
-        ELSE m.structure.mapping(c, d)
-      RETURN ConceptualMetaphor {
-        name = m.name + "_extended",
-        structure = MetaphorStructure {
-          source = m.structure.source,
-          target = m.structure.target,
-          mapping = extended_mapping
-        },
-        expressions = m.expressions  -- May need to be updated based on new mapping
-      }
+    // Efficient quantization operations
+    REWRITE AbsMeanQuant(W:𝕄) -> 𝕋𝕄 {
+      LET γ = MEAN(|W|)
+      IN ROUND(W / (γ + ε)) CLAMP [-1, 1]
     }
-    
-    SIMPLIFY ComposeMetaphors(m1 : ConceptualMetaphor, m2 : ConceptualMetaphor) -> ConceptualMetaphor {
-      REQUIRE m1.structure.target = m2.structure.source
-      RETURN ConceptualMetaphor {
-        name = m1.name + "_" + m2.name,
-        structure = MetaphorStructure {
-          source = m1.structure.source,
-          target = m2.structure.target,
-          mapping = λ c, d . m2.structure.mapping(m1.structure.mapping(c, m1.structure.target), d)
-        },
-        expressions = m1.expressions ∪ m2.expressions  -- Simplified union, may need refinement
-      }
+    // Ternary quantization of weights, crucial for eliminating MatMul
+
+    REWRITE AbsMaxQuant(x:𝕍, b:ℤ) -> 𝕍 {
+      LET γ = MAX(|x|), Q_b = 2^(b-1)
+      IN CLIP(x ⊙ (Q_b / γ), -Q_b + ε, Q_b - ε)
     }
+    // Activation quantization, balancing precision and efficiency
+
+    // Compressed representations of core operations
+    SIMPLIFY FusedBLForward(X:𝕄, (W,b):𝔹𝕃) -> 𝕄 {
+      AbsMaxQuant(RMSNorm(X), 8) ⊠ (AbsMeanQuant(W), b)
+    }
+    // Fused operation for efficient BitLinear forward pass
+
+    REWRITE CompressMLGRU(x:𝕍, h:𝕍, m:𝕄𝕃𝔾ℝ𝕌) -> 𝕍 { MLGRU(x, h, m) }
+    REWRITE CompressGLU(x:𝕍, g:𝔾𝕃𝕌) -> 𝕍 { GLU(x, g) }
+    // Compact representations of MLGRU and GLU operations
   }
 
   PROOFS {
-    THEOREM MetaphorCreativity {
-      FORALL (m : ConceptualMetaphor, c : Context) .
-        EXIST (e : LinguisticExpression) .
-          e IN m.expressions AND
-          NOT PreviouslyObserved(e, c)
+    // Formal proofs of key theorems
+    THEOREM ScalingConvergence {
+      ∃ N:ℤ . ∀ n > N . ℙ(ℳℱ(n)) > ℙ(𝕋𝕣(n))
     }
     PROOF {
-      GIVEN m : ConceptualMetaphor, c : Context
-      
-      LET novel_concept = FindNovelMapping(m.structure.mapping, c)
-      LET novel_expression = MetaphorGeneration(m, c, novel_concept)
-      novel_expression IN m.expressions BY definition of MetaphorGeneration
-      NOT PreviouslyObserved(novel_expression, c) BY novelty of mapping
-      HENCE e = novel_expression satisfies the theorem
-      
+      // Proof sketch: Use scaling coefficients to show intersection and superiority
+      LET α_M, β_M = SCALING_COEFF(ℳℱ)
+      LET α_T, β_T = SCALING_COEFF(𝕋𝕣)
+      ASSUME ∀ n . ℙ(ℳℱ, n) = α_M * n^β_M ∧ ℙ(𝕋𝕣, n) = α_T * n^β_T
+      SHOW β_M > β_T BY ScalingAdvantage
+      LET N = (α_T / α_M)^(1 / (β_M - β_T))
+      SHOW ∀ n > N . α_M * n^β_M > α_T * n^β_T BY algebra, β_M > β_T
       QED
     }
+    // Proves that MatMulFreeLM outperforms Transformers beyond a certain scale
 
-    THEOREM ConceptualBlendingEmergence {
-      FORALL (cin : ConceptualIntegrationNetwork) .
-        EXIST (concept : Concept) .
-          concept IN cin.blend() AND
-          FORALL (space : Domain) . space IN cin.input_spaces =>
-            concept NOT IN space
+    THEOREM HWEfficiency {
+      ∀ s:ℤ, h:{GPU, FPGA} . EFFICIENCY(ℳℱ(s), h) > EFFICIENCY(𝕋𝕣(s), h)
     }
     PROOF {
-      GIVEN cin : ConceptualIntegrationNetwork
-      
-      LET blended = cin.blend()
-      blended includes composition, completion, and elaboration steps
-      completion introduces background knowledge not in input spaces
-      elaboration can produce novel inferences
-      LET novel_concept = FirstNovelConcept(blended, cin.input_spaces)
-      novel_concept IN blended BY <5>
-      FORALL (space : Domain) . space IN cin.input_spaces =>
-             novel_concept NOT IN space BY definition of FirstNovelConcept
-      HENCE concept = novel_concept satisfies the theorem
-      
+      // Proof sketch: Show compute and memory efficiency, then combine for overall efficiency
+      GIVEN s:ℤ, h:{GPU, FPGA}
+      SHOW ℂ(ℳℱ(s)) < ℂ(𝕋𝕣(s)) BY TernaryOps.Efficiency, MatMulFree
+      SHOW 𝔸(ℳℱ(s)) < 𝔸(𝕋𝕣(s)) BY FusedBL.Efficiency, |𝕋| < |ℝ|
+      CONCLUDE EFFICIENCY(ℳℱ(s), h) > EFFICIENCY(𝕋𝕣(s), h) BY definition
       QED
     }
+    // Demonstrates efficiency advantages on both GPU and FPGA hardware
+
+    THEOREM MLGRUStability {
+      ∀ m:𝕄𝕃𝔾ℝ𝕌, x:𝕍, h:𝕍 . ||MLGRU(x, h, m)|| ≤ MAX(||x||, ||h||)
+    }
+    PROOF {
+      // Proof sketch: Analyze bounds of intermediate values and use properties of operations
+      GIVEN m:𝕄𝕃𝔾ℝ𝕌, x:𝕍, h:𝕍
+      LET (f, c, g, h', o) = MLGRU(x, h, m)
+      SHOW ∀i . 0 ≤ f[i], g[i] ≤ 1 ∧ -1 ≤ c[i] ≤ 1 BY properties of σ, τ
+      SHOW ||h'|| ≤ MAX(||x||, ||h||) BY algebra, bounds on f, g, c
+      CONCLUDE ||o|| ≤ ||h'|| BY properties of ⊛
+      QED
+    }
+    // Proves stability of MLGRU, essential for handling long sequences
   }
 
   EXAMPLES {
-    EXAMPLE LoveIsJourney {
-      LET love_journey = ConceptualMetaphor {
-        name = "LOVE_IS_A_JOURNEY",
-        structure = MetaphorStructure {
-          source = {traveler, vehicle, destination, obstacles},
-          target = {lover, relationship, goals, difficulties},
-          mapping = {
-            traveler -> lover,
-            vehicle -> relationship,
-            destination -> relationship_goals,
-            obstacles -> relationship_difficulties
-          }
-        },
-        expressions = {
-          λ lang, ctx . "We've come a long way",
-          λ lang, ctx . "We're at a crossroads",
-          λ lang, ctx . "Look how far we've come",
-          λ lang, ctx . "It's been a bumpy road"
-        }
-      }
-      
-      COMPUTE entailments = Entailment(love_journey)
-      ASSERT "progress_in_journey" -> "progress_in_relationship" IN entailments
-      
-      LET context = Context { language = "English", culture = "Western" }
-      COMPUTE novel_expression = MetaphorGeneration(love_journey, context)
-      ASSERT NOT PreviouslyObserved(novel_expression, context)
-      
-      VISUALIZE ConceptualMappingDiagram(love_journey) 
-        AS "LOVE IS A JOURNEY Conceptual Mapping"
+    // Demonstrative examples of model usage and performance
+    EXAMPLE Scalableℳℱ {
+      LET m_370M = ℳℱ { L = 24, d = 1024 }
+      LET m_2_7B = ℳℱ { L = 32, d = 2560 }
+      ASSERT ℒ(m_2_7B) < ℒ(m_370M)
+      ASSERT ENERGY(m_2_7B) < ENERGY(EQUIVALENT_𝕋𝕣(m_2_7B))
     }
-    
-    EXAMPLE TimeIsMoneyBlend {
-      LET time_domain = Domain { time, duration, activities }
-      LET money_domain = Domain { money, quantity, transactions }
-      
-      LET time_is_money = ConceptualIntegrationNetwork {
-        input_spaces = {time_domain, money_domain},
-        generic_space = { resource, amount, use },
-        blended_space = BlendedSpace {
-          input_spaces = {time_domain, money_domain},
-          generic_space = { resource, amount, use },
-          blended_space = { },  -- To be filled by blend operation
-          composition = λ spaces . UnionOf(spaces),
-          completion = λ space . AddBackgroundKnowledge(space, "economic_principles"),
-          elaboration = λ space . InferNovelConcepts(space)
-        },
-        cross_space_mappings = {
-          (time_domain, money_domain, { time -> money, duration -> quantity, activities -> transactions })
-        }
-      }
-      
-      COMPUTE blended_concepts = time_is_money.blend()
-      ASSERT "time_investment" IN blended_concepts
-      ASSERT "time_investment" NOT IN time_domain AND "time_investment" NOT IN money_domain
-      
-      LET novel_expression = MetaphorGeneration(time_is_money, Context { language = "English" })
-      ASSERT IsMetaphorical(novel_expression)
-      
-      VISUALIZE ConceptualIntegrationNetwork(time_is_money) 
-        AS "TIME IS MONEY Conceptual Integration Network"
+    // Demonstrates performance improvement with scale and energy efficiency
+
+    EXAMPLE FPGAImpl {
+      LET m = ℳℱ { L = 24, d = 2048 }
+      LET impl = FPGAAccelerator { clock = 60MHz, cores = 26, mem = DDR4 }
+      ASSERT LATENCY(m, impl) < 50ms
+      ASSERT ENERGY(m, impl) ≈ 13W
     }
+    // Shows efficient FPGA implementation, approaching brain-like efficiency
+
+    EXAMPLE LearningRateAnalysis {
+      LET m = ℳℱ { L = 24, d = 1024 }
+      LET cfg = { batch = 50000, lr = 1e-2, sched = COSINE_WARMUP }
+      ASSERT ℒ(m, cfg) < ℒ(m, cfg WITH {lr = 1.5e-3})
+    }
+    // Illustrates importance of higher learning rates for ternary weight training
   }
 }
     </textarea>
